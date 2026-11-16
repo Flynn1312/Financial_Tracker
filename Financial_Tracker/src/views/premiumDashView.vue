@@ -776,7 +776,6 @@ const statusLabel = (s) =>
 
     <button class="income-change-btn" @click="incomeEditing = !incomeEditing; incomeDraft = String(income)">
       {{ incomeEditing ? 'Cancel' : 'Change' }}
-      Change
     </button>
   </div>
 
@@ -2974,4 +2973,59 @@ h2.spaced {
     min-height: 145px;
   }
 }
+
+
+/* Final summary-card layout fix:
+   .stats contains one .summary-grid, so it must not itself be a 3-column grid. */
+.dashboard .stats {
+  display: block;
+  width: 100%;
+  max-width: 1200px;
+  margin: 18px auto 16px;
+}
+
+.dashboard .stats > .summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  max-width: none;
+  gap: 16px;
+  margin: 0;
+  align-items: stretch;
+}
+
+.dashboard .summary-card {
+  width: 100%;
+  min-width: 0;
+  min-height: 150px;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.dashboard .summary-card h2 {
+  max-width: 100%;
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.dashboard .income-change-btn {
+  min-width: 120px;
+  margin-top: 12px;
+}
+
+@media (max-width: 700px) {
+  .dashboard .stats > .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard .summary-card {
+    min-height: 130px;
+  }
+}
+
 </style>
