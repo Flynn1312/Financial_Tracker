@@ -110,6 +110,7 @@ async function loadOverviewData() {
       targetAmount: Number(goal.amount || 0),
       initialSaved: Number(goal.amount_saved || 0),
       open: false,
+      showItemForm: false,
       draft: { label: '', cost: '' },
       saveDraft: '',
       contributions: [],
@@ -378,6 +379,7 @@ async function addItem(goal) {
     })
     goal.draft.label = ''
     goal.draft.cost = ''
+    goal.showItemForm = false
     await loadOverviewData()
   } catch (error) {
     actionError.value = error.message
@@ -437,6 +439,7 @@ async function addSavings(goal) {
 }
 
 const newGoal = reactive({ name: '', date: '' })
+const showNewGoalForm = ref(false)
 async function addGoal() {
   if (!newGoal.name.trim() || !newGoal.date) return
   savingChanges.value = true
@@ -448,6 +451,7 @@ async function addGoal() {
     })
     newGoal.name = ''
     newGoal.date = ''
+    showNewGoalForm.value = false
     await loadOverviewData()
   } catch (error) {
     actionError.value = error.message
@@ -764,34 +768,47 @@ const statusLabel = (s) =>
     <!-- ===================== OVERVIEW ===================== -->
     <template v-if="tab === 'overview'">
       <section class="stats">
-        <div class="card stat">
-          <div class="manage-heading">
-            <p class="label">Monthly income</p>
-            <button class="link-btn" type="button" @click="incomeEditing = !incomeEditing; incomeDraft = String(income)">
-              {{ incomeEditing ? 'Cancel' : 'Change' }}
-            </button>
-          </div>
-          <p class="stat-amount">{{ money(income) }}</p>
-          <form v-if="incomeEditing" class="manage-form" @submit.prevent="saveIncome">
-            <input v-model="incomeDraft" type="number" min="0" step="0.01" aria-label="Monthly income" placeholder="Monthly income, £" />
-            <button class="btn" type="submit" :disabled="savingChanges">Save</button>
-          </form>
-        </div>
-        <div class="card stat">
-          <p class="label">Subscriptions</p>
-          <p class="stat-amount">{{ money(totalSubscriptions) }}</p>
-        </div>
-        <div class="card stat">
-          <p class="label">Outgoings</p>
-          <p class="stat-amount">{{ money(totalOutgoings) }}</p>
-        </div>
-      </section>
+  <div class="summary-grid">
+
+  <div class="summary-card">
+    <p class="summary-label">Monthly income</p>
+    <h2>{{ money(income) }}</h2>
+
+    <button class="income-change-btn" @click="incomeEditing = !incomeEditing; incomeDraft = String(income)">
+      {{ incomeEditing ? 'Cancel' : 'Change' }}
+      Change
+    </button>
+  </div>
+
+  <div class="summary-card">
+    <p class="summary-label">Subscriptions</p>
+    <h2>{{ money(totalSubscriptions) }}</h2>
+    <p class="summary-detail">
+      {{ subscriptions.length }} active payments
+    </p>
+  </div>
+
+  <div class="summary-card">
+    <p class="summary-label">Outgoings</p>
+    <h2>{{ money(totalOutgoings) }}</h2>
+    <p class="summary-detail">
+      {{ outgoings.length }} regular bills
+    </p>
+  </div>
+
+</div>
+</section>
 
       <div class="columns">
         <!-- Upcoming goals -->
         <section class="card">
-          <h2>Upcoming goals</h2>
-
+          <details class="manage-dropdown collection-dropdown goals-dropdown">
+            <summary>
+              <span class="manage-dropdown-title">Upcoming goals <span class="collection-count">({{ upcomingGoals.length }})</span></span>
+              <span class="manage-dropdown-hint">View your targets, savings and goal breakdowns</span>
+              <span class="manage-dropdown-plus" aria-hidden="true">＋</span>
+            </summary>
+            <div class="collection-content goals-content">
           <p v-if="!upcomingGoals.length" class="empty">No upcoming goals yet.</p>
 
           <ul class="goal-list">
@@ -803,7 +820,7 @@ const statusLabel = (s) =>
                   <small>{{ formatDate(g.due) }} · {{ daysLabel(g.daysLeft) }}</small>
                 </div>
                 <span class="goal-target">{{ money(g.target) }}</span>
-                <button class="delete-btn" type="button" :disabled="savingChanges" @click="deleteGoal(g.goal)">Delete goal</button>
+                <button class="delete-btn goal-delete" type="button" :disabled="savingChanges" @click="deleteGoal(g.goal)">Delete goal</button>
               </div>
 
               <div class="progress" role="progressbar"
@@ -832,28 +849,54 @@ const statusLabel = (s) =>
               </button>
 
               <div v-if="g.goal.open" class="checklist">
-                <ul>
+                <div class="checklist-heading">
+                  <div>
+                    <h3>Goal breakdown</h3>
+                    <p>Track the things you need to buy for this goal.</p>
+                  </div>
+                  <span class="item-count">{{ g.goal.items.filter((i) => i.done).length }} of {{ g.goal.items.length }} bought</span>
+                </div>
+
+                <ul v-if="g.goal.items.length" class="checklist-items">
                   <li v-for="item in g.goal.items" :key="item.id" :class="{ done: item.done }">
                     <label>
                       <input type="checkbox" :checked="item.done" :disabled="savingChanges" @change="setItemPurchased(g.goal, item, $event.target.checked)" />
                       <span class="item-label">{{ item.label }}</span>
                     </label>
                     <span class="item-cost">{{ money(item.cost) }}</span>
-                    <button class="icon-btn" @click="removeItem(g.goal, item.id)"
+                    <button class="icon-btn" type="button" @click="removeItem(g.goal, item.id)"
                             :aria-label="`Remove ${item.label}`">✕</button>
                   </li>
                 </ul>
-                <p v-if="!g.goal.items.length" class="empty">Add the costs that make up this goal.</p>
+                <p v-else class="checklist-empty">No items added yet. Add the costs that make up this goal below.</p>
 
-                <form class="add-row" @submit.prevent="addItem(g.goal)">
-                  <input v-model="g.goal.draft.label" placeholder="e.g. Merch" aria-label="Item name" />
-                  <input v-model="g.goal.draft.cost" type="number" min="0" step="0.01"
-                         placeholder="£" aria-label="Cost" />
-                  <button type="submit" class="btn">Add</button>
+                <button
+                  class="goal-input-toggle"
+                  type="button"
+                  :aria-expanded="g.goal.showItemForm"
+                  @click="g.goal.showItemForm = !g.goal.showItemForm"
+                >
+                  <span>{{ g.goal.showItemForm ? '−' : '+' }}</span>
+                  {{ g.goal.showItemForm ? 'Hide item form' : 'Add an item to this goal' }}
+                </button>
+                <form v-if="g.goal.showItemForm" class="add-row checklist-add" @submit.prevent="addItem(g.goal)">
+                  <label class="item-input-label">Item name
+                    <input v-model="g.goal.draft.label" placeholder="e.g. Merch" aria-label="Item name" />
+                  </label>
+                  <label class="cost-input-label">Cost (£)
+                    <input v-model="g.goal.draft.cost" type="number" min="0" step="0.01"
+                           placeholder="0.00" aria-label="Cost" />
+                  </label>
+                  <button type="submit" class="btn" :disabled="savingChanges">Add item</button>
                 </form>
 
-                <h3 class="sub-head">Total saved</h3>
-                <p class="empty">{{ money(g.goal.initialSaved) }} saved towards this goal.</p>
+                <div class="total-saved-panel">
+                  <div>
+                    <h3>Total saved</h3>
+                    <p>Money already put towards this goal.</p>
+                  </div>
+                  <strong>{{ money(g.goal.initialSaved) }}</strong>
+                </div>
                 <p class="hint">
                   Ticked items count as bought. Money you set aside counts too, and is treated as paying
                   for ticked items first, so nothing is counted twice.
@@ -867,58 +910,127 @@ const statusLabel = (s) =>
             <strong>{{ money(afterGoals) }}</strong> spare.
           </p>
 
-          <form class="add-row new-goal" @submit.prevent="addGoal">
-            <input v-model="newGoal.name" placeholder="New goal, e.g. Festival" aria-label="Goal name" />
-            <input v-model="newGoal.date" type="date" aria-label="Goal date" />
-            <button type="submit" class="btn">Add goal</button>
-          </form>
+          <div class="new-goal-dropdown">
+            <button
+              class="goal-input-toggle new-goal-toggle"
+              type="button"
+              :aria-expanded="showNewGoalForm"
+              @click="showNewGoalForm = !showNewGoalForm"
+            >
+              <span>{{ showNewGoalForm ? '−' : '+' }}</span>
+              {{ showNewGoalForm ? 'Close' : 'Create a new goal' }}
+            </button>
+            <form v-if="showNewGoalForm" class="add-row new-goal" @submit.prevent="addGoal">
+              <label>Goal name
+                <input v-model="newGoal.name" placeholder="e.g. Summer holiday" aria-label="Goal name" required />
+              </label>
+              <label>Target date
+                <input v-model="newGoal.date" type="date" aria-label="Goal date" required />
+              </label>
+              <button type="submit" class="btn" :disabled="savingChanges">Add goal</button>
+            </form>
+          </div>
+            </div>
+          </details>
         </section>
 
         <!-- Subscriptions and outgoings -->
         <section class="card">
           <p v-if="actionError" class="action-error" role="alert">{{ actionError }}</p>
-          <h2>Subscriptions</h2>
-          <ul class="rows">
-            <li v-for="sub in subscriptions" :key="sub.id">
-              <span>{{ sub.name }}<small>{{ sub.frequency }} · Day {{ sub.day }}</small></span>
-              <span class="row-actions"><strong>{{ money(sub.amount) }}</strong>
-                <button class="delete-btn" type="button" :disabled="savingChanges" @click="deleteSubscription(sub.id)" :aria-label="`Delete ${sub.name}`">Delete</button>
-              </span>
-            </li>
-          </ul>
-          <p v-if="!subscriptions.length" class="empty">No subscriptions yet.</p>
-          <form class="manage-form stacked" @submit.prevent="createSubscription">
-            <h3>Add subscription</h3>
-            <input v-model="newSubscription.name" placeholder="Subscription name" aria-label="Subscription name" />
-            <input v-model="newSubscription.cost" type="number" min="0.01" step="0.01" placeholder="Cost, £" aria-label="Subscription cost" />
-            <label>Renewal date <input v-model="newSubscription.renewalDate" type="date" aria-label="Renewal date" /></label>
-            <select v-model="newSubscription.frequency" aria-label="Subscription frequency">
-              <option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
-            </select>
-            <input v-model="newSubscription.type" placeholder="Type (e.g. Entertainment)" aria-label="Subscription type" />
-            <button class="btn" type="submit" :disabled="savingChanges">Add subscription</button>
-          </form>
 
-          <h2 class="spaced">Outgoings</h2>
-          <ul class="rows">
-            <li v-for="item in outgoings" :key="item.id">
-              <span>{{ item.name }}<small>{{ item.frequency }}<template v-if="item.renewalDate"> · {{ formatShort(item.renewalDate) }}</template></small></span>
-              <span class="row-actions"><strong>{{ money(item.amount) }}</strong>
-                <button class="delete-btn" type="button" :disabled="savingChanges" @click="deleteOutgoing(item.id)" :aria-label="`Delete ${item.name}`">Delete</button>
-              </span>
-            </li>
-          </ul>
-          <p v-if="!outgoings.length" class="empty">No outgoing bills yet.</p>
-          <form class="manage-form stacked" @submit.prevent="createOutgoing">
-            <h3>Add outgoing</h3>
-            <input v-model="newOutgoing.name" placeholder="Bill name (e.g. Rent)" aria-label="Outgoing name" />
-            <input v-model="newOutgoing.cost" type="number" min="0.01" step="0.01" placeholder="Cost, £" aria-label="Outgoing cost" />
-            <label>Due date <input v-model="newOutgoing.renewalDate" type="date" aria-label="Outgoing due date" /></label>
-            <select v-model="newOutgoing.frequency" aria-label="Outgoing frequency">
-              <option value="monthly">Monthly</option><option value="yearly">Yearly</option>
-            </select>
-            <button class="btn" type="submit" :disabled="savingChanges">Add outgoing</button>
-          </form>
+          <details class="manage-dropdown collection-dropdown">
+            <summary>
+              <span class="manage-dropdown-title">Subscriptions <span class="collection-count">({{ subscriptions.length }})</span></span>
+              <span class="manage-dropdown-hint">View and manage your recurring subscriptions</span>
+              <span class="manage-dropdown-plus" aria-hidden="true">＋</span>
+            </summary>
+            <div class="collection-content">
+              <ul class="rows">
+                <li v-for="sub in subscriptions" :key="sub.id">
+                  <span>{{ sub.name }}<small>{{ sub.frequency }} · Day {{ sub.day }}</small></span>
+                  <span class="row-actions"><strong>{{ money(sub.amount) }}</strong>
+                    <button class="delete-btn" type="button" :disabled="savingChanges" @click="deleteSubscription(sub.id)" :aria-label="`Delete ${sub.name}`">Delete</button>
+                  </span>
+                </li>
+              </ul>
+              <p v-if="!subscriptions.length" class="empty">No subscriptions yet.</p>
+
+              <details class="manage-dropdown">
+                <summary>
+                  <span class="manage-dropdown-title">Add a subscription</span>
+                  <span class="manage-dropdown-hint">Enter the details for a new recurring payment</span>
+                  <span class="manage-dropdown-plus" aria-hidden="true">＋</span>
+                </summary>
+                <form class="manage-form stacked" @submit.prevent="createSubscription">
+                  <label class="field-label">Subscription name
+                    <input v-model="newSubscription.name" placeholder="e.g. Netflix" aria-label="Subscription name" />
+                  </label>
+                  <label class="field-label">Cost (£)
+                    <input v-model="newSubscription.cost" type="number" min="0.01" step="0.01" placeholder="e.g. 10.99" aria-label="Subscription cost" />
+                  </label>
+                  <label class="field-label">Renewal date
+                    <input v-model="newSubscription.renewalDate" type="date" aria-label="Renewal date" />
+                  </label>
+                  <label class="field-label">Frequency
+                    <select v-model="newSubscription.frequency" aria-label="Subscription frequency">
+                      <option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
+                    </select>
+                  </label>
+                  <label class="field-label full-field">Category
+                    <select v-model="newSubscription.type" aria-label="Subscription category">
+                      <option>Entertainment</option><option>Music</option><option>TV &amp; streaming</option>
+                      <option>Gaming</option><option>Software</option><option>Fitness</option><option>Other</option>
+                    </select>
+                  </label>
+                  <button class="btn" type="submit" :disabled="savingChanges">Add subscription</button>
+                </form>
+              </details>
+            </div>
+          </details>
+
+          <details class="manage-dropdown collection-dropdown">
+            <summary>
+              <span class="manage-dropdown-title">Outgoings <span class="collection-count">({{ outgoings.length }})</span></span>
+              <span class="manage-dropdown-hint">View and manage your regular bills and expenses</span>
+              <span class="manage-dropdown-plus" aria-hidden="true">＋</span>
+            </summary>
+            <div class="collection-content">
+              <ul class="rows">
+                <li v-for="item in outgoings" :key="item.id">
+                  <span>{{ item.name }}<small>{{ item.frequency }}<template v-if="item.renewalDate"> · {{ formatShort(item.renewalDate) }}</template></small></span>
+                  <span class="row-actions"><strong>{{ money(item.amount) }}</strong>
+                    <button class="delete-btn" type="button" :disabled="savingChanges" @click="deleteOutgoing(item.id)" :aria-label="`Delete ${item.name}`">Delete</button>
+                  </span>
+                </li>
+              </ul>
+              <p v-if="!outgoings.length" class="empty">No outgoing bills yet.</p>
+
+              <details class="manage-dropdown">
+                <summary>
+                  <span class="manage-dropdown-title">Add an outgoing</span>
+                  <span class="manage-dropdown-hint">Add a bill or regular expense</span>
+                  <span class="manage-dropdown-plus" aria-hidden="true">＋</span>
+                </summary>
+                <form class="manage-form stacked" @submit.prevent="createOutgoing">
+                  <label class="field-label">Bill name
+                    <input v-model="newOutgoing.name" placeholder="e.g. Rent or phone bill" aria-label="Outgoing name" />
+                  </label>
+                  <label class="field-label">Cost (£)
+                    <input v-model="newOutgoing.cost" type="number" min="0.01" step="0.01" placeholder="e.g. 650.00" aria-label="Outgoing cost" />
+                  </label>
+                  <label class="field-label">Due date
+                    <input v-model="newOutgoing.renewalDate" type="date" aria-label="Outgoing due date" />
+                  </label>
+                  <label class="field-label">Frequency
+                    <select v-model="newOutgoing.frequency" aria-label="Outgoing frequency">
+                      <option value="monthly">Monthly</option><option value="yearly">Yearly</option>
+                    </select>
+                  </label>
+                  <button class="btn" type="submit" :disabled="savingChanges">Add outgoing</button>
+                </form>
+              </details>
+            </div>
+          </details>
         </section>
       </div>
     </template>
@@ -1168,13 +1280,13 @@ const statusLabel = (s) =>
 .stats,
 .month-card,
 .columns {
-  max-width: 1500px;
+  max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
 }
 
 .hero {
-    max-width: 1500px;
+    max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
   border: 3px solid var(--border);
@@ -1342,16 +1454,37 @@ h2.spaced {
 }
 
 /* Stats */
+/* Three wide summary cards */
 .stats {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
   margin-bottom: 16px;
+  align-items: stretch;
 }
+
+.stats .stat {
+  width: 100%;
+  min-width: 0;
+  min-height: 150px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 22px;
+}
+
+.stat .label {
+  margin: 0 0 8px;
+}
+
 .stat-amount {
   margin: 4px 0 0;
-  font-size: 1.4rem;
-  font-weight: 600;
+  font-size: 1.7rem;
+  font-weight: 700;
 }
 
 /* Columns */
@@ -1970,9 +2103,11 @@ h2.spaced {
   .dashboard {
     padding: 32px;
   }
+  @media (max-width: 767px) {
   .stats {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
   }
+}
   .columns {
     grid-template-columns: 3fr 2fr;
     align-items: start;
@@ -2006,6 +2141,837 @@ h2.spaced {
     width: 100%;
     max-width: 100%;
     margin: 0;
+  }
+}
+
+
+/* -------------------------------------------------------------------------
+   Dashboard polish: clearer goal cards and cleaner entry forms
+   ------------------------------------------------------------------------- */
+.goal-list {
+  gap: 14px;
+}
+.goal-list > .goal {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 15px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdfb 100%);
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.045);
+}
+.goal-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+.goal-head .goal-title {
+  width: 100%;
+  min-width: 0;
+  flex: initial;
+  overflow-wrap: anywhere;
+}
+.goal-head .goal-title strong {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.goal-head .goal-delete {
+  grid-column: 2 / -1;
+  justify-self: end;
+  width: auto;
+  min-width: 110px;
+  white-space: nowrap;
+}
+.goal-icon {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #dcfce7;
+  border-radius: 13px;
+  background: #f0fdf4;
+}
+.goal-title {
+  gap: 4px;
+  padding-top: 2px;
+}
+.goal-title strong {
+  font-size: 1rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.goal-title small {
+  font-size: .78rem;
+}
+.goal-target {
+  flex-shrink: 0;
+  padding: 6px 9px;
+  border: 1px solid #dcfce7;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: .86rem;
+}
+.goal > .progress {
+  height: 9px;
+  margin: 14px 0 8px;
+}
+.goal-foot {
+  font-size: .82rem;
+  line-height: 1.5;
+}
+.goal-sub {
+  margin-top: 4px;
+  font-size: .76rem;
+}
+.save-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 14px;
+}
+.save-row input,
+.add-row input,
+.manage-form input,
+.manage-form select {
+  min-height: 42px;
+  border: 1px solid #d7e1da;
+  border-radius: 9px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.dashboard input:focus,
+.dashboard select:focus {
+  outline: none;
+  border-color: #23834b;
+  box-shadow: 0 0 0 3px rgba(35, 131, 75, .12);
+}
+.save-row .btn {
+  min-width: 126px;
+}
+.goal > .link-btn {
+  margin-top: 12px;
+  padding: 5px 0;
+}
+.checklist {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #e1e9e3;
+  border-radius: 14px;
+  background: #f8fbf9;
+}
+.checklist-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.checklist-heading h3,
+.total-saved-panel h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: .92rem;
+}
+.checklist-heading p,
+.total-saved-panel p {
+  margin: 3px 0 0;
+  color: #718078;
+  font-size: .78rem;
+}
+.item-count {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e8f5ec;
+  color: #166534;
+  font-size: .75rem;
+  font-weight: 700;
+}
+.checklist ul.checklist-items {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.checklist ul.checklist-items li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 4px;
+  border-bottom: 1px solid #e3ebe5;
+}
+.checklist ul.checklist-items li label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  cursor: pointer;
+}
+.checklist ul.checklist-items input[type='checkbox'] {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #16803e;
+}
+.item-label {
+  display: block;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.4;
+}
+.item-cost {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: .88rem;
+  font-weight: 700;
+}
+.checklist li.done .item-label {
+  text-decoration: line-through;
+  color: #8a9690;
+}
+.checklist .icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  color: #7b8980;
+}
+.checklist .icon-btn:hover {
+  background: #feecec;
+  color: #b91c1c;
+}
+.checklist-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed #cbd8ce;
+  border-radius: 9px;
+  color: #718078;
+  font-size: .84rem;
+  text-align: center;
+}
+.checklist .checklist-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 14px;
+}
+.checklist .checklist-add label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #526158;
+  font-size: .75rem;
+  font-weight: 600;
+}
+.checklist .checklist-add input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #d7e1da;
+  border-radius: 9px;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+}
+.checklist .checklist-add .btn {
+  min-height: 42px;
+  border-radius: 9px;
+}
+.total-saved-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 13px 15px;
+  border: 1px solid #d8eadc;
+  border-radius: 11px;
+  background: #eff8f1;
+}
+.total-saved-panel > strong {
+  color: #166534;
+  font-size: 1.1rem;
+  white-space: nowrap;
+}
+.checklist .hint {
+  margin-top: 10px;
+}
+.goal-summary {
+  line-height: 1.5;
+}
+.new-goal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(145px, .8fr);
+  gap: 9px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px dashed #b7d9c2;
+  border-radius: 13px;
+  background: #f8fcf9;
+}
+.new-goal .btn {
+  grid-column: 1 / -1;
+}
+
+/* Subscription and outgoing lists */
+.rows li {
+  gap: 12px;
+  padding: 12px 10px;
+  border: 1px solid #edf0ee;
+  border-radius: 10px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+.rows li:last-child {
+  border-bottom: 1px solid #edf0ee;
+  margin-bottom: 0;
+}
+.rows li > span:first-child {
+  min-width: 0;
+  gap: 4px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.rows small {
+  font-size: .75rem;
+  font-weight: 400;
+}
+.row-actions {
+  flex-shrink: 0;
+}
+.row-actions strong {
+  white-space: nowrap;
+  font-size: .9rem;
+}
+.delete-btn {
+  padding: 6px 9px;
+  border-radius: 8px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.delete-btn:hover {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+/* Compact disclosure panels keep the dashboard tidy until a form is needed. */
+.manage-dropdown {
+  margin-top: 14px;
+  border: 1px solid #dce9df;
+  border-radius: 12px;
+  background: #fbfefc;
+  overflow: hidden;
+}
+.collection-dropdown { margin-top: 12px; }
+.collection-dropdown:first-of-type { margin-top: 0; }
+.collection-count { color: #718078; font-weight: 600; }
+.collection-content { padding: 0 14px 14px; }
+.collection-content > .rows { margin-bottom: 8px; }
+.collection-content > .manage-dropdown { margin-top: 10px; }
+.collection-content > .empty { margin: 10px 0; }
+.manage-dropdown > summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 3px 12px;
+  min-height: 62px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.manage-dropdown > summary::-webkit-details-marker { display: none; }
+.manage-dropdown > summary::marker { content: ''; }
+.manage-dropdown-title {
+  color: #166534;
+  font-size: .9rem;
+  font-weight: 700;
+}
+.manage-dropdown-hint {
+  grid-column: 1;
+  color: #718078;
+  font-size: .75rem;
+}
+.manage-dropdown-plus {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: #eaf7ee;
+  color: #166534;
+  font-size: 1.25rem;
+  transition: transform .18s ease;
+}
+.manage-dropdown[open] > summary {
+  border-bottom: 1px solid #e3eee6;
+  background: #f4faf6;
+}
+.manage-dropdown[open] .manage-dropdown-plus { transform: rotate(45deg); }
+.manage-dropdown .manage-form.stacked {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 14px;
+}
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #526158;
+  font-size: .76rem;
+  font-weight: 600;
+}
+.field-label input,
+.field-label select { width: 100%; min-width: 0; }
+.manage-form .full-field { grid-column: 1 / -1; }
+.manage-form.stacked > .field-label:not(.full-field) { grid-column: span 1; }
+
+/* Form panels use a consistent two-column layout with clear labels. */
+.manage-form.stacked {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #e7eee9;
+  border-radius: 13px;
+  background: #f8fbf9;
+}
+.manage-form.stacked h3 {
+  margin: 0 0 2px;
+  color: #166534;
+  font-size: .92rem;
+  font-weight: 700;
+}
+.manage-form.stacked > input,
+.manage-form.stacked > select,
+.manage-form.stacked > label {
+  min-width: 0;
+  grid-column: span 1;
+}
+.manage-form.stacked > label {
+  gap: 6px;
+  color: #526158;
+  font-size: .76rem;
+  font-weight: 600;
+}
+.manage-form.stacked > label input {
+  width: 100%;
+  color: var(--text);
+  font-weight: 400;
+}
+.manage-form.stacked > input:nth-of-type(1) {
+  grid-column: 1 / -1;
+}
+.manage-form.stacked > label {
+  grid-column: 1 / -1;
+}
+.manage-form.stacked > input:last-of-type:not(:nth-of-type(1)) {
+  grid-column: 1 / -1;
+}
+.manage-form.stacked > .btn {
+  min-height: 43px;
+  margin-top: 2px;
+  border-radius: 9px;
+  grid-column: 1 / -1;
+}
+.manage-form.stacked input::placeholder {
+  color: #9ca3af;
+}
+.action-error {
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .goal-list > .goal {
+    padding: 13px;
+  }
+  .goal-target {
+    padding: 5px 7px;
+    font-size: .78rem;
+  }
+  .goal-head {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .goal-head .goal-target {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .goal-head .goal-delete {
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: start;
+  }
+  .save-row {
+    grid-template-columns: 1fr;
+  }
+  .save-row .btn {
+    width: 100%;
+  }
+  .checklist .checklist-add {
+    grid-template-columns: minmax(0, 1fr) 92px;
+  }
+  .checklist .checklist-add .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .checklist ul.checklist-items li {
+    grid-template-columns: minmax(0, 1fr) auto 28px;
+    gap: 8px;
+  }
+  .new-goal {
+    grid-template-columns: 1fr;
+  }
+  .new-goal .btn {
+    grid-column: auto;
+  }
+  .manage-form.stacked {
+    grid-template-columns: 1fr;
+  }
+  .manage-form.stacked > input,
+  .manage-form.stacked > select,
+  .manage-form.stacked > label,
+  .manage-form.stacked > input:nth-of-type(1),
+  .manage-form.stacked > input:last-of-type:not(:nth-of-type(1)) {
+    grid-column: 1;
+  }
+  .rows li {
+    align-items: flex-start;
+    padding: 11px 8px;
+  }
+  .row-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+}
+
+
+/* Collapsible goal input panels */
+.new-goal-dropdown {
+  margin-top: 18px;
+}
+.goal-input-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 15px;
+  border: 1px solid #cfe4d5;
+  border-radius: 11px;
+  background: #f3faf5;
+  color: #166534;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+.goal-input-toggle:hover {
+  background: #e8f5ec;
+  border-color: #9bc9a9;
+}
+.goal-input-toggle > span {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: #dcefe2;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.new-goal-toggle {
+  border-style: dashed;
+}
+.new-goal {
+  margin-top: 10px;
+}
+.new-goal label,
+.checklist-add label {
+  display: grid;
+  gap: 6px;
+  color: #52645a;
+  font-size: .82rem;
+  font-weight: 600;
+}
+.new-goal label input,
+.checklist-add label input {
+  width: 100%;
+  min-width: 0;
+}
+.checklist .goal-input-toggle {
+  margin: 12px 0;
+}
+.checklist .checklist-add {
+  margin-top: 0;
+}
+@media (max-width: 560px) {
+  .new-goal label,
+  .checklist-add label {
+    grid-column: 1 / -1;
+  }
+}
+
+/* More compact dashboard layout */
+@media (min-width: 768px) {
+  .dashboard {
+    padding: 24px;
+  }
+
+  .top,
+  .hero,
+  .tabs,
+  .stats,
+  .month-card,
+  .columns {
+    max-width: 1200px;
+  }
+
+  .card {
+    padding: 18px;
+    border-radius: 14px;
+  }
+
+  .columns {
+    gap: 12px;
+  }
+
+  .stats {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .top {
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .hero {
+    margin-bottom: 12px;
+  }
+
+  h2 {
+    font-size: 1rem;
+    margin-bottom: 10px;
+  }
+
+  .goal-list {
+    gap: 14px;
+  }
+
+  .goal-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
+  .save-row {
+    margin-top: 8px;
+  }
+
+  .manage-form.stacked {
+    gap: 7px;
+    padding: 10px 0 14px;
+  }
+
+  .manage-form input,
+  .manage-form select {
+    padding: 8px;
+  }
+
+  .btn {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+}
+
+/* Centre and tidy the three summary cards */
+.stats .stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 115px;
+  gap: 6px;
+}
+
+/* Keep the income heading centred, with Change at the right */
+.stat-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 28px;
+}
+
+.stat-heading .label {
+  text-align: center;
+}
+
+.stat-amount {
+  margin: 2px 0 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Neater Change button */
+.stat-heading .link-btn {
+  position: absolute;
+  right: 0;
+  padding: 5px 10px;
+  border: 1px solid #cfe5d7;
+  border-radius: 8px;
+  background: #f0faf3;
+  color: var(--green);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.stat-heading .link-btn:hover {
+  background: #dcf3e4;
+  border-color: var(--green);
+}
+
+/* Keep the income edit form tidy */
+.stats .stat .manage-form {
+  width: 100%;
+  justify-content: center;
+}
+
+.stats .stat .manage-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .stats .stat {
+    min-height: 100px;
+  }
+}
+
+.income-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  padding: 24px;
+}
+
+.income-card .summary-label {
+  margin: 0;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.income-card .summary-value {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #10233f;
+}
+
+.income-change-btn {
+  padding: 8px 24px;
+  border: 1px solid #cce8d7;
+  border-radius: 8px;
+  background: #effaf3;
+  color: #14783d;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.income-change-btn:hover {
+  background: #dff3e6;
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+  align-items: stretch;
+}
+
+.summary-card {
+  background: #fff;
+  border-radius: 16px;
+  min-height: 175px;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.summary-label {
+  color: #64748b;
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+
+.summary-card h2 {
+  color: #10233f;
+  font-size: 27px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.summary-detail {
+  color: #64748b;
+  font-size: 13px;
+  margin: 9px 0 0;
+}
+
+.income-change-btn {
+  margin-top: 12px;
+  padding: 9px 28px;
+  background: #effaf3;
+  color: #14783d;
+  border: 1px solid #cce8d7;
+  border-radius: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.income-change-btn:hover {
+  background: #dff3e6;
+}
+
+@media (max-width: 700px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-card {
+    min-height: 145px;
   }
 }
 </style>
