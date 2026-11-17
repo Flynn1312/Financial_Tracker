@@ -41,10 +41,6 @@ const { username, password, error, success, loading, login } = useLogin()
       <button type="submit" :disabled="loading" style="margin-top: 20px;">
         {{ loading ? 'Signing in...' : 'Sign in' }}
       </button>
-      <p class="register-link">
-        Don't have an account?
-        <RouterLink to="/register">Sign up</RouterLink>
-      </p>
     </form>
   </main>
 </template>
@@ -65,7 +61,7 @@ body {
   justify-content: center;
   align-items: center;
   padding: 20px;
-  background: #085c47;
+  background: #f7f5ef;
 }
 
 .login-form {
@@ -107,7 +103,7 @@ input {
 }
 
 input:focus {
-  outline: 2px solid #085c47;
+  outline: 2px solid #1e3a5f;
   outline-offset: 2px;
 }
 
@@ -117,14 +113,14 @@ button {
   padding: 13px;
   border: none;
   border-radius: 6px;
-  background: #085c47;
+  background: #1e3a5f;
   color: white;
   font-size: 16px;
   cursor: pointer;
 }
 
 button:hover {
-  background: #085c47;
+  background: #1e3a5f;
 }
 
 .error {
@@ -144,7 +140,7 @@ button:hover {
 }
 
 .login-form .register-link a {
-  color: #085c47;
+  color: #1e3a5f;
   text-decoration: none;
 }
 

@@ -771,13 +771,29 @@ const statusLabel = (s) =>
   <div class="summary-grid">
 
   <div class="summary-card">
-    <p class="summary-label">Monthly income</p>
-    <h2>{{ money(income) }}</h2>
+  <p class="summary-label">Monthly income</p>
+  <h2>{{ money(income) }}</h2>
 
-    <button class="income-change-btn" @click="incomeEditing = !incomeEditing; incomeDraft = String(income)">
-      {{ incomeEditing ? 'Cancel' : 'Change' }}
-    </button>
-  </div>
+  <form v-if="incomeEditing" class="income-edit" @submit.prevent="saveIncome">
+    <input
+      v-model="incomeDraft"
+      class="income-edit-input"
+      type="number"
+      min="0"
+      step="0.01"
+      aria-label="Monthly income"
+    />
+    <button type="submit" class="income-edit-save" :disabled="savingChanges">Save</button>
+  </form>
+
+  <button
+    class="income-change-btn"
+    type="button"
+    @click="incomeEditing = !incomeEditing; incomeDraft = String(income)"
+  >
+    {{ incomeEditing ? 'Cancel' : 'Change' }}
+  </button>
+</div>
 
   <div class="summary-card">
     <p class="summary-label">Subscriptions</p>
@@ -1250,13 +1266,13 @@ const statusLabel = (s) =>
 
 <style scoped>
 .dashboard {
-  --bg: #347e4f;
+  --bg: #f7f5ef;
   --card: #ffffff;
   --text: #111827;
   --muted: #6b7280;
   --border: #e5e7eb;
-  --blue: #2563eb;
-  --green: #157338;
+  --blue: #1e3a5f;
+  --green: #1e3a5f;
   --orange: #f59e0b;
   --red: #dc2626;
 
@@ -1370,7 +1386,7 @@ h2.spaced {
 /* Hero */
 .hero {
   margin-bottom: 16px;
-  background: linear-gradient(135deg, #198544, #60dc9b);
+  background: linear-gradient(135deg, #1e3a5f, #3b6ea5);
   color: #fff;
 }
 .hero .label,
@@ -1399,9 +1415,9 @@ h2.spaced {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.25);
 }
-.seg.subs { background: #153315; }
-.seg.out { background: #337b3f; }
-.seg.avail { background: #7bf97b; }
+.seg.subs { background: #0f2238; }
+.seg.out { background: #6f9bc9; }
+.seg.avail { background: #e8dcc0; }
 
 .legend {
   display: flex;
@@ -1421,9 +1437,9 @@ h2.spaced {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dot.subs { background: #153315; }
-.dot.out { background: #337b3f; }
-.dot.avail { background: #7bf97b; }
+.dot.subs { background: #0f2238; }
+.dot.out { background: #6f9bc9; }
+.dot.avail { background: #e8dcc0; }
 
 /* Tabs */
 .tabs button {
@@ -1512,10 +1528,10 @@ h2.spaced {
 }
 .progress .bought,
 .progress .fill.ok {
-  background: var(--green);
+  background: var(--blue);
 }
 .progress .set-aside {
-  background: #6de0b4;
+  background: #527bb0;
 }
 .progress .fill {
   border-radius: 999px;
@@ -1527,7 +1543,7 @@ h2.spaced {
   background: var(--red);
 }
 .goal .progress .bought {
-  background: var(--green);
+  background: #1e3a5f;
 }
 
 /* Goals */
@@ -1550,7 +1566,7 @@ h2.spaced {
   height: 42px;
   flex-shrink: 0;
   border-radius: 12px;
-  background: #eff6ff;
+  background: #1e3a5f;
   font-size: 1.3rem;
 }
 .goal-title {
@@ -1595,7 +1611,7 @@ h2.spaced {
   padding: 0;
   border: none;
   background: none;
-  color: var(--green);
+  color: var(--blue);
   font: inherit;
   font-size: 0.85rem;
   font-weight: 600;
@@ -1605,12 +1621,12 @@ h2.spaced {
   margin: 18px 0 0;
   padding: 12px;
   border-radius: 12px;
-  background: #f0fdf4;
-  color: #166534;
+  background: #1e3a5f;
+  color: #fff;
   font-size: 0.9rem;
 }
 .goal-summary.warn {
-  background: #fef2f2;
+  background: #1e3a5f;
   color: #991b1b;
 }
 
@@ -1619,7 +1635,7 @@ h2.spaced {
   margin-top: 10px;
   padding: 12px;
   border-radius: 12px;
-  background: #f9fafb;
+  background: #1e3a5f;
 }
 .checklist ul {
   margin: 0;
@@ -1700,7 +1716,7 @@ h2.spaced {
   padding: 10px 16px;
   border: none;
   border-radius: 10px;
-  background: var(--green);
+  background: var(--blue);
   color: #fff;
   font: inherit;
   font-weight: 600;
@@ -1845,7 +1861,7 @@ h2.spaced {
 }
 .status.ok {
   background: #f0fdf4;
-  color: #166534;
+  color: #1e3a5f;
 }
 .status.near {
   background: #fffbeb;
@@ -2043,7 +2059,7 @@ h2.spaced {
 }
 .horizon.active {
   border-color: var(--green);
-  background: #f0fdf4;
+  background: #1e3a5f;
 }
 
 .chart-wrap svg {
@@ -2207,8 +2223,8 @@ h2.spaced {
   padding: 6px 9px;
   border: 1px solid #dcfce7;
   border-radius: 999px;
-  background: #f0fdf4;
-  color: #166534;
+  background: #f0f3fd;
+  color: #1e3a5f;
   font-size: .86rem;
 }
 .goal > .progress {
@@ -2241,7 +2257,7 @@ h2.spaced {
 .dashboard input:focus,
 .dashboard select:focus {
   outline: none;
-  border-color: #23834b;
+  border-color: #1e3a5f;
   box-shadow: 0 0 0 3px rgba(35, 131, 75, .12);
 }
 .save-row .btn {
@@ -2276,14 +2292,14 @@ h2.spaced {
 .checklist-heading p,
 .total-saved-panel p {
   margin: 3px 0 0;
-  color: #718078;
+  color: #4970a4;
   font-size: .78rem;
 }
 .item-count {
   padding: 5px 9px;
   border-radius: 999px;
   background: #e8f5ec;
-  color: #166534;
+  color: #1e3a5f;
   font-size: .75rem;
   font-weight: 700;
 }
@@ -2318,7 +2334,7 @@ h2.spaced {
   min-width: 18px;
   height: 18px;
   margin: 0;
-  accent-color: #16803e;
+  accent-color: #1e3a5f;
 }
 .item-label {
   display: block;
@@ -2335,7 +2351,7 @@ h2.spaced {
 }
 .checklist li.done .item-label {
   text-decoration: line-through;
-  color: #8a9690;
+  color: #1e3a5f;
 }
 .checklist .icon-btn {
   display: grid;
@@ -2344,7 +2360,7 @@ h2.spaced {
   height: 28px;
   padding: 0;
   border-radius: 7px;
-  color: #7b8980;
+  color: #1e3a5f;
 }
 .checklist .icon-btn:hover {
   background: #feecec;
@@ -2355,7 +2371,7 @@ h2.spaced {
   padding: 14px;
   border: 1px dashed #cbd8ce;
   border-radius: 9px;
-  color: #718078;
+  color: #1e3a5f;
   font-size: .84rem;
   text-align: center;
 }
@@ -2370,7 +2386,7 @@ h2.spaced {
   display: grid;
   gap: 5px;
   min-width: 0;
-  color: #526158;
+  color: #1e3a5f;
   font-size: .75rem;
   font-weight: 600;
 }
@@ -2401,7 +2417,7 @@ h2.spaced {
   background: #eff8f1;
 }
 .total-saved-panel > strong {
-  color: #166534;
+  color: #1e3a5f;
   font-size: 1.1rem;
   white-space: nowrap;
 }
@@ -2494,13 +2510,13 @@ h2.spaced {
 .manage-dropdown > summary::-webkit-details-marker { display: none; }
 .manage-dropdown > summary::marker { content: ''; }
 .manage-dropdown-title {
-  color: #166534;
+  color: #1f2937;
   font-size: .9rem;
   font-weight: 700;
 }
 .manage-dropdown-hint {
   grid-column: 1;
-  color: #718078;
+  color: #1e3a5f;
   font-size: .75rem;
 }
 .manage-dropdown-plus {
@@ -2511,14 +2527,14 @@ h2.spaced {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: #eaf7ee;
-  color: #166534;
+  background: #1e3a5f;
+  color: #eaf7ee;
   font-size: 1.25rem;
   transition: transform .18s ease;
 }
 .manage-dropdown[open] > summary {
   border-bottom: 1px solid #e3eee6;
-  background: #f4faf6;
+  background: #f4f7fa;
 }
 .manage-dropdown[open] .manage-dropdown-plus { transform: rotate(45deg); }
 .manage-dropdown .manage-form.stacked {
@@ -2531,10 +2547,11 @@ h2.spaced {
 .field-label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  color: #526158;
+  color: #1e3a5f;
   font-size: .76rem;
   font-weight: 600;
+  height: 100%;
+  max-height: 60px;
 }
 .field-label input,
 .field-label select { width: 100%; min-width: 0; }
@@ -2553,7 +2570,7 @@ h2.spaced {
 }
 .manage-form.stacked h3 {
   margin: 0 0 2px;
-  color: #166534;
+  color: #1e3a5f;
   font-size: .92rem;
   font-weight: 700;
 }
@@ -2678,7 +2695,7 @@ h2.spaced {
   border: 1px solid #cfe4d5;
   border-radius: 11px;
   background: #f3faf5;
-  color: #166534;
+  color: #1e3a5f;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
@@ -2694,7 +2711,7 @@ h2.spaced {
   width: 23px;
   height: 23px;
   border-radius: 50%;
-  background: #dcefe2;
+  background: #d4edf7;
   font-size: 1.15rem;
   line-height: 1;
 }
@@ -2852,7 +2869,7 @@ h2.spaced {
 
 .stat-heading .link-btn:hover {
   background: #dcf3e4;
-  border-color: var(--green);
+  border-color: #1e3a5f;
 }
 
 /* Keep the income edit form tidy */
@@ -2899,8 +2916,8 @@ h2.spaced {
   padding: 8px 24px;
   border: 1px solid #cce8d7;
   border-radius: 8px;
-  background: #effaf3;
-  color: #14783d;
+  background: #eff0fa;
+  color: #1e3a5f;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease;
@@ -2952,16 +2969,16 @@ h2.spaced {
 .income-change-btn {
   margin-top: 12px;
   padding: 9px 28px;
-  background: #effaf3;
-  color: #14783d;
-  border: 1px solid #cce8d7;
+  background: #cee7fe;
+  color: #1e3a5f;
+  border: 1px solid #ccd3e8;
   border-radius: 9px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .income-change-btn:hover {
-  background: #dff3e6;
+  background: #cde7f7;
 }
 
 @media (max-width: 700px) {
@@ -3027,5 +3044,211 @@ h2.spaced {
     min-height: 130px;
   }
 }
+/* Mobile only: consistent side margin + compact summary cards */
+@media (max-width: 700px) {
+  .dashboard {
+    padding: 12px 14px;
+  }
 
+  .dashboard .stats {
+    margin: 12px 0;
+  }
+
+  .dashboard .stats > .summary-grid {
+    gap: 10px;
+  }
+
+  .dashboard .summary-card {
+    min-height: 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+
+  .dashboard .summary-label {
+    margin: 0 0 4px;
+    font-size: 13px;
+  }
+
+  .dashboard .summary-card h2 {
+    font-size: 1.15rem;
+  }
+
+  .dashboard .summary-detail {
+    margin: 4px 0 0;
+    font-size: 12px;
+  }
+
+  .dashboard .income-change-btn {
+    min-width: 0;
+    margin-top: 8px;
+    padding: 6px 20px;
+    font-size: 0.85rem;
+  }
+}
+/* Desktop only (768px+): tighter, less oversized dashboard */
+@media (min-width: 768px) {
+  .dashboard {
+    padding: 20px;
+  }
+
+  .dashboard .top,
+  .dashboard .hero,
+  .dashboard .stats,
+  .dashboard .month-card,
+  .dashboard .columns {
+    max-width: 1050px;
+  }
+
+  /* Header: shorter tabs, less padding */
+  .dashboard .top {
+    padding: 14px 18px;
+    margin-bottom: 10px;
+  }
+  .dashboard .top h1 {
+    font-size: 1.35rem;
+  }
+  .dashboard .subtitle {
+    margin-top: 2px;
+    font-size: 0.9rem;
+  }
+  .dashboard .tabs {
+    height: auto;
+    width: 360px;
+    padding: 0;
+    gap: 4px;
+  }
+  .dashboard .tabs button {
+    border-radius: 8px;
+    font-size: 0.9rem;
+  }
+
+  /* Hero card */
+  .dashboard .hero {
+    padding: 16px 20px;
+    margin-bottom: 10px;
+    border-width: 2px;
+  }
+  .dashboard .hero-amount {
+    margin: 4px 0 0;
+    font-size: 2.2rem;
+  }
+  .dashboard .hero-note {
+    margin-bottom: 10px;
+    font-size: 0.85rem;
+  }
+  .dashboard .bar {
+    height: 10px;
+    border-width: 2px;
+  }
+  .dashboard .legend {
+    margin-top: 8px;
+    font-size: 0.75rem;
+  }
+
+  /* Summary cards */
+  .dashboard .stats {
+    margin: 10px auto;
+  }
+  .dashboard .stats > .summary-grid {
+    gap: 10px;
+  }
+  .dashboard .summary-card {
+    min-height: 0;
+    max-height: 300px;
+    height: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+  }
+  .dashboard .summary-label {
+    margin: 0 0 4px;
+    font-size: 0.85rem;
+  }
+  .dashboard .summary-card h2 {
+    font-size: 1.4rem;
+  }
+  .dashboard .summary-detail {
+    margin-top: 4px;
+    font-size: 0.78rem;
+  }
+  .dashboard .income-change-btn {
+    min-width: 0;
+    margin-top: 8px;
+    padding: 6px 24px;
+    font-size: 0.85rem;
+  }
+
+  /* Cards below */
+  .dashboard .card {
+    padding: 14px;
+  }
+  .dashboard .columns {
+    gap: 10px;
+  }
+  .dashboard .manage-dropdown > summary {
+    min-height: 52px;
+    padding: 8px 12px;
+  }
+}
+.dashboard .income-edit {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 260px !important;
+  margin: 8px auto 0 !important;
+  padding: 0 !important;
+}
+.dashboard .income-edit-input {
+  flex: 1 1 auto !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width:100px !important;
+  height: 24px !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  font-family: inherit !important;
+  font-size: 0.95rem !important;
+  border: 1px solid #d3dfec !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+}
+.dashboard .income-edit-save {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  height: 30px !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 16px !important;
+  font-family: inherit !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+  background: #1e3a5f !important;
+  border: none !important;
+  border-radius: 8px !important;
+  cursor: pointer;
+}
+
+/* Change / Cancel: small and centred, not full width */
+.dashboard .summary-card .income-change-btn {
+  width: auto !important;
+  min-width: 0 !important;
+  margin-top: 10px !important;
+  padding: 6px 22px !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  color: #1e3a5f !important;
+  background: #eaf0f7 !important;
+  border: 1px solid #d3dfec !important;
+  border-radius: 8px !important;
+}
+
+/* Edit mode shouldn't stretch the other cards */
+.dashboard .stats > .summary-grid {
+  align-items: start;
+}
 </style>
