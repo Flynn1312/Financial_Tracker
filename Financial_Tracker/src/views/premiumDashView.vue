@@ -54,8 +54,8 @@ const dbDateToISO = (value) => {
 
 const categoryId = (value) => String(value ?? 'other').trim().toLowerCase()
 
-async function loadOverviewData() {
-  loading.value = true
+async function loadOverviewData({ silent = false } = {}) {
+  if (!silent) loading.value = true
   loadError.value = ''
 
   try {
@@ -217,7 +217,7 @@ async function saveIncome() {
       body: JSON.stringify({ income: amount }),
     })
 
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
     incomeEditing.value = false
   } catch (error) {
     actionError.value = error.message
@@ -244,7 +244,7 @@ async function createSubscription() {
       }),
     })
     Object.assign(newSubscription, { name: '', cost: '', renewalDate: toISO(new Date()), type: 'Entertainment', frequency: 'monthly' })
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -258,7 +258,7 @@ async function deleteSubscription(id) {
   actionError.value = ''
   try {
     await apiRequest(`/subscriptions/${id}?userId=${userId}`, { method: 'DELETE' })
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -282,7 +282,7 @@ async function createOutgoing() {
       }),
     })
     Object.assign(newOutgoing, { name: '', cost: '', renewalDate: toISO(new Date()), frequency: 'monthly' })
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -296,7 +296,7 @@ async function deleteOutgoing(id) {
   actionError.value = ''
   try {
     await apiRequest(`/outgoings/${id}?userId=${userId}`, { method: 'DELETE' })
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -321,9 +321,11 @@ const pct = (part) =>
 
 const subsPct = computed(() => pct(totalSubscriptions.value))
 const outPct = computed(() => pct(totalOutgoings.value))
-const availablePct = computed(() => pct(Math.max(0, available.value)))
+const goalsPct = computed(() => pct(monthlyGoalTotal.value))
+const afterGoalsPct = computed(() => pct(Math.max(0, afterGoals.value)))
+const availablePct = computed(() => pct(Math.max(0, afterGoals.value)))
 
-// ---------------------------------------------------------------------------
+// --------------------------------------------------S-------------------------
 // Goals, checklists and savings
 // ---------------------------------------------------------------------------
 const upcomingGoals = computed(() =>
@@ -338,7 +340,7 @@ const upcomingGoals = computed(() =>
       const remaining = Math.max(0, target - covered)
       const due = new Date(g.date)
       const daysLeft = Math.ceil((due - today) / 86400000)
-      const monthsLeft = Math.max(1, Math.ceil(daysLeft / 30))
+      const monthsLeft = Math.max(0, Math.ceil(daysLeft / 28))
       const boughtPct = target > 0 ? Math.min(100, (bought / target) * 100) : 0
       const extraPct =
         target > 0 ? Math.min(100 - boughtPct, (Math.max(0, setAside - bought) / target) * 100) : 0
@@ -380,7 +382,7 @@ async function addItem(goal) {
     goal.draft.label = ''
     goal.draft.cost = ''
     goal.showItemForm = false
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -393,7 +395,7 @@ async function removeItem(goal, itemId) {
   actionError.value = ''
   try {
     await apiRequest(`/goals/${goal.id}/items/${itemId}?userId=${userId}`, { method: 'DELETE' })
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -410,10 +412,10 @@ async function setItemPurchased(goal, item, purchased) {
       body: JSON.stringify({ purchased }),
     })
     item.done = purchased
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } finally {
     savingChanges.value = false
   }
@@ -430,7 +432,7 @@ async function addSavings(goal) {
       body: JSON.stringify({ userId, amount }),
     })
     goal.saveDraft = ''
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -452,7 +454,7 @@ async function addGoal() {
     newGoal.name = ''
     newGoal.date = ''
     showNewGoalForm.value = false
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -466,7 +468,7 @@ async function deleteGoal(goal) {
   actionError.value = ''
   try {
     await apiRequest(`/goals/${goal.id}?userId=${userId}`, { method: 'DELETE' })
-    await loadOverviewData()
+    await loadOverviewData({ silent: true })
   } catch (error) {
     actionError.value = error.message
   } finally {
@@ -746,24 +748,26 @@ const statusLabel = (s) =>
 
     <template v-if="!loading && !loadError">
     <!-- Available budget -->
-    <section class="card hero" :class="{ negative: available < 0 }">
-      <p class="label">Available after subscriptions &amp; outgoings</p>
-      <p class="hero-amount">{{ money(available) }}</p>
-      <p class="hero-note" v-if="available >= 0">of {{ money(income) }} monthly income</p>
-      <p class="hero-note" v-else>You're over budget this month</p>
+    <section class="card hero" :class="{ negative: afterGoals < 0 }">
+  <p class="label">Available after subscriptions, outgoings &amp; goals</p>
+  <p class="hero-amount">{{ money(afterGoals) }}</p>
+  <p class="hero-note" v-if="afterGoals >= 0">of {{ money(income) }} monthly income</p>
+  <p class="hero-note" v-else>You're over budget this month</p>
 
-      <div class="bar" role="img" aria-label="Income breakdown">
-        <span class="seg subs" :style="{ width: subsPct + '%' }"></span>
-        <span class="seg out" :style="{ width: outPct + '%' }"></span>
-        <span class="seg avail" :style="{ width: availablePct + '%' }"></span>
-      </div>
+  <div class="bar" role="img" aria-label="Income breakdown">
+    <span class="seg subs" :style="{ width: subsPct + '%' }"></span>
+    <span class="seg out" :style="{ width: outPct + '%' }"></span>
+    <span class="seg goals" :style="{ width: goalsPct + '%' }"></span>
+    <span class="seg avail" :style="{ width: afterGoalsPct + '%' }"></span>
+  </div>
 
-      <ul class="legend">
-        <li><i class="dot subs"></i>Subscriptions</li>
-        <li><i class="dot out"></i>Outgoings</li>
-        <li><i class="dot avail"></i>Available</li>
-      </ul>
-    </section>
+  <ul class="legend">
+    <li><i class="dot subs"></i>Subscriptions</li>
+    <li><i class="dot out"></i>Outgoings</li>
+    <li><i class="dot goals"></i>Goals</li>
+    <li><i class="dot avail"></i>Available</li>
+  </ul>
+</section>
 
     <!-- ===================== OVERVIEW ===================== -->
     <template v-if="tab === 'overview'">
@@ -808,6 +812,14 @@ const statusLabel = (s) =>
     <h2>{{ money(totalOutgoings) }}</h2>
     <p class="summary-detail">
       {{ outgoings.length }} regular bills
+    </p>
+  </div>
+
+  <div class="summary-card">
+    <p class="summary-label">Goals</p>
+    <h2>{{ money(monthlyGoalTotal) }}</h2>
+    <p class="summary-detail">
+      {{ goals.length-1 }} saving goals
     </p>
   </div>
 
@@ -1416,7 +1428,8 @@ h2.spaced {
   background: rgba(255, 255, 255, 0.25);
 }
 .seg.subs { background: #0f2238; }
-.seg.out { background: #6f9bc9; }
+.seg.out { background: #4d7fb5; }
+.seg.goals { background: #97daf4; }
 .seg.avail { background: #e8dcc0; }
 
 .legend {
@@ -1438,7 +1451,8 @@ h2.spaced {
   flex-shrink: 0;
 }
 .dot.subs { background: #0f2238; }
-.dot.out { background: #6f9bc9; }
+.dot.out { background: #5f8ab9; }
+.dot.goals { background: #97daf4; }
 .dot.avail { background: #e8dcc0; }
 
 /* Tabs */
@@ -2928,7 +2942,7 @@ h2.spaced {
 }
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin: 18px 0;
   align-items: stretch;
@@ -3003,7 +3017,7 @@ h2.spaced {
 
 .dashboard .stats > .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   width: 100%;
   max-width: none;
   gap: 16px;
