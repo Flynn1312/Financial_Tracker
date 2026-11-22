@@ -18,6 +18,26 @@ const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
 const lastMonthDay = (day) =>
   toISO(new Date(lastMonthStart.getFullYear(), lastMonthStart.getMonth(), day))
 
+// Pay cycle: paid every 28 days. Set LAST_PAYDAY to any real past payday
+// (month is 0-indexed, so 10 = November).
+const PAY_CYCLE_DAYS = 28
+const LAST_PAYDAY = new Date(2026, 10, 26)
+const DAY_MS = 86400000
+const daysSinceLastPayday = Math.round((today - LAST_PAYDAY) / DAY_MS)
+const daysToNextPayday =
+  PAY_CYCLE_DAYS - (((daysSinceLastPayday % PAY_CYCLE_DAYS) + PAY_CYCLE_DAYS) % PAY_CYCLE_DAYS)
+const nextPayday = new Date(today)
+nextPayday.setDate(nextPayday.getDate() + daysToNextPayday)
+const nextPaydayLabel = `${nextPayday.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} (${
+  daysToNextPayday === 1 ? 'tomorrow' : `in ${daysToNextPayday} days`
+})`
+// Number of paydays that land between today and the goal date
+// A payday on the goal date itself doesn't count (too late to use it).
+const paydaysUntil = (daysLeft) =>
+  daysLeft > daysToNextPayday
+    ? Math.floor((daysLeft - daysToNextPayday - 1) / PAY_CYCLE_DAYS) + 1
+    : 0
+
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
@@ -340,7 +360,7 @@ const upcomingGoals = computed(() =>
       const remaining = Math.max(0, target - covered)
       const due = new Date(g.date)
       const daysLeft = Math.ceil((due - today) / 86400000)
-      const monthsLeft = Math.max(0, Math.ceil(daysLeft / 28))
+      const cyclesLeft = Math.max(1, paydaysUntil(daysLeft))
       const boughtPct = target > 0 ? Math.min(100, (bought / target) * 100) : 0
       const extraPct =
         target > 0 ? Math.min(100 - boughtPct, (Math.max(0, setAside - bought) / target) * 100) : 0
@@ -356,16 +376,19 @@ const upcomingGoals = computed(() =>
         boughtPct,
         extraPct,
         progress: boughtPct + extraPct,
-        perMonth: remaining / monthsLeft,
+        perCycle: remaining / cyclesLeft,
       }
     })
     .filter((g) => g.daysLeft >= 0)
     .sort((a, b) => a.due - b.due)
 )
 
-const monthlyGoalTotal = computed(() =>
-  upcomingGoals.value.reduce((total, g) => total + g.perMonth, 0)
+const cycleGoalTotal = computed(() =>
+  upcomingGoals.value.reduce((total, g) => total + g.perCycle, 0)
 )
+// 28-day cycles: 13 pays a year, so convert to a monthly figure for the
+// hero bar and summary cards, which use monthly income and bills.
+const monthlyGoalTotal = computed(() => (cycleGoalTotal.value * 13) / 12)
 const afterGoals = computed(() => available.value - monthlyGoalTotal.value)
 
 async function addItem(goal) {
@@ -753,6 +776,7 @@ const statusLabel = (s) =>
   <p class="hero-amount">{{ money(afterGoals) }}</p>
   <p class="hero-note" v-if="afterGoals >= 0">of {{ money(income) }} monthly income</p>
   <p class="hero-note" v-else>You're over budget this month</p>
+  <p class="hero-note">Next payday: <strong>{{ nextPaydayLabel }}</strong></p>
 
   <div class="bar" role="img" aria-label="Income breakdown">
     <span class="seg subs" :style="{ width: subsPct + '%' }"></span>
@@ -819,7 +843,7 @@ const statusLabel = (s) =>
     <p class="summary-label">Goals</p>
     <h2>{{ money(monthlyGoalTotal) }}</h2>
     <p class="summary-detail">
-      {{ goals.length-1 }} saving goals
+      {{ upcomingGoals.length }} saving goals
     </p>
   </div>
 
@@ -858,7 +882,7 @@ const statusLabel = (s) =>
 
               <p class="goal-foot">
                 {{ money(g.covered) }} covered ·
-                <strong>{{ money(g.perMonth) }}/month</strong> to stay on track
+                <strong>{{ money(g.perCycle) }}/pay</strong> to stay on track
               </p>
               <p class="goal-sub" v-if="g.setAside > 0 || g.bought > 0">
                 {{ money(g.setAside) }} set aside · {{ money(g.bought) }} bought
@@ -933,7 +957,7 @@ const statusLabel = (s) =>
           </ul>
 
           <p v-if="upcomingGoals.length" class="goal-summary" :class="{ warn: afterGoals < 0 }">
-            Saving for all goals needs {{ money(monthlyGoalTotal) }}/month, leaving
+            Saving for all goals needs {{ money(cycleGoalTotal) }}/pay (about {{ money(monthlyGoalTotal) }}/month), leaving
             <strong>{{ money(afterGoals) }}</strong> spare.
           </p>
 
@@ -2997,7 +3021,7 @@ h2.spaced {
 
 @media (max-width: 700px) {
   .summary-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .summary-card {
@@ -3051,7 +3075,7 @@ h2.spaced {
 
 @media (max-width: 700px) {
   .dashboard .stats > .summary-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dashboard .summary-card {
