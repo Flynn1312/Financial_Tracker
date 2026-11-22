@@ -23,4 +23,10 @@ const router = createRouter({
   ]
 })
 
+// Send logged-out visitors back to the login page.
+router.beforeEach((to) => {
+  if (to.path === '/') return true
+  return sessionStorage.getItem('token') ? true : '/'
+})
+
 export default router

@@ -1,9 +1,10 @@
 import bcrypt from 'bcrypt';
 import User from '../models/userModel.js';
+import { signToken } from '../middleware/auth.js';
 
 export const register = async (req, res) => {
   try {
-    const { username, password, access } = req.body
+    const { username, password } = req.body
 
     if (
       typeof username !== 'string' ||
@@ -34,7 +35,8 @@ export const register = async (req, res) => {
     // Never store plain passwords (unencrypted)
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    await User.create(cleanUsername, hashedPassword, access)
+    // Public sign-ups are always basic. Promote people in the database.
+    await User.create(cleanUsername, hashedPassword, 'basic')
 
     return res.status(201).json({
       success: true,
@@ -75,6 +77,7 @@ export const login = async (req, res) => {
     res.json({
       success: true,
       message: 'Login successful!',
+      token: signToken(user),
       user: {
         id: user.id,
         username: user.username,

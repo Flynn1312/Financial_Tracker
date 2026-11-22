@@ -12,7 +12,8 @@ import express from 'express'
 export default function savingsRoutes(db) {
   const router = express.Router()
 
-  const getUserId = (req) => Number(req.query.userId ?? req.body?.userId)
+  // The user id comes from the verified login token (set by requireAuth), never from the request.
+  const getUserId = (req) => req.user?.id
   const badRequest = (res, message) => res.status(400).json({ message })
   const isMoney = (n) => Number.isFinite(n) && n >= 0
 

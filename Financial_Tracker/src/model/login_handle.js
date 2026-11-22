@@ -39,6 +39,7 @@ export function useLogin() {
       }
 
       sessionStorage.setItem('user', JSON.stringify(data.user))
+      sessionStorage.setItem('token', data.token)
 
       const routes = {
         basic: '/basic',

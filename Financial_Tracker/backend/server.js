@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import dotenv from 'dotenv'
 import express from 'express'
 import cors from 'cors'
@@ -8,6 +9,7 @@ import pool from './config/db.js'
 import authRoutes from './routes/authRoutes.js'
 import overviewRoutes from './routes/overviewRoutes.js'
 import savingsRoutes from './routes/savings.Routes.js'
+import { requireAuth, requireAccess } from './middleware/auth.js'
 
 // Load environment variables (a .env file locally; real env vars on the host)
 const __filename = fileURLToPath(import.meta.url)
@@ -44,10 +46,10 @@ app.get('/api/health', async (req, res) => {
 app.use('/api', authRoutes)
 
 // Financial overview routes
-app.use('/api/overview', overviewRoutes)
+app.use('/api/overview', requireAuth, requireAccess('premium', 'admin'), overviewRoutes)
 
 // Savings accounts routes
-app.use('/api/savings', savingsRoutes(pool))
+app.use('/api/savings', requireAuth, requireAccess('premium', 'admin'), savingsRoutes(pool))
 
 // Start server
 const PORT = process.env.PORT || 3000

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, reactive, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { API_URL } from '../config.js'
 
 // ---------------------------------------------------------------------------
@@ -47,9 +48,26 @@ const tab = ref('overview') // 'overview' | 'spending' | 'invest' | 'savings'
 // ---------------------------------------------------------------------------
 // Data loaded from the Express API
 // ---------------------------------------------------------------------------
-// Temporary test user. In production, get the user ID from your auth session
-// on the server (req.user.id), rather than trusting a query-string ID.
-const userId = 2
+// The logged-in user. Login stores the user and a signed token in sessionStorage.
+// The server reads the user from the token (not from this id), so changing the
+// number here can't show anyone else's data.
+const router = useRouter()
+const storedUser = (() => {
+  try { return JSON.parse(sessionStorage.getItem('user') || 'null') } catch { return null }
+})()
+const userId = storedUser?.id
+
+const authHeaders = () => {
+  const token = sessionStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function endSession() {
+  sessionStorage.removeItem('user')
+  sessionStorage.removeItem('token')
+  router.replace('/')
+}
+if (!sessionStorage.getItem('token')) endSession()
 
 const income = ref(0)
 const subscriptions = ref([])
@@ -80,7 +98,8 @@ async function loadOverviewData({ silent = false } = {}) {
   loadError.value = ''
 
   try {
-    const response = await fetch(`${API_URL}/api/overview?userId=${userId}`)
+    const response = await fetch(`${API_URL}/api/overview?userId=${userId}`, { headers: authHeaders() })
+    if (response.status === 401 || response.status === 403) { endSession(); return }
     if (!response.ok) throw new Error(`Could not load dashboard data (HTTP ${response.status}).`)
 
     const result = await response.json()
@@ -213,8 +232,12 @@ const newOutgoing = reactive({
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_URL}/api/overview${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) },
   })
+  if (response.status === 401) {
+    endSession()
+    throw new Error('Your session has expired. Please log in again.')
+  }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload.message || `Request failed (HTTP ${response.status}).`)
   return payload
@@ -762,8 +785,12 @@ const savingsHistoryLoading = reactive({})
 async function savingsApi(path = '', options = {}) {
   const response = await fetch(`${SAVINGS_API}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) },
   })
+  if (response.status === 401) {
+    endSession()
+    throw new Error('Your session has expired. Please log in again.')
+  }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload.message || `Request failed (HTTP ${response.status}).`)
   return payload
@@ -1576,6 +1603,9 @@ const formatDateTime = (value) =>
                 <button type="submit" class="btn" :disabled="savingsBusy">Add</button>
                 <button type="button" class="btn sv-btn-secondary" :disabled="savingsBusy"
                         @click="adjustSavingsBalance(a, -1)">Remove</button>
+                <input v-model="savingsReasons[a.id]" class="sv-reason" maxlength="255"
+                       placeholder="Reason (optional), e.g. Birthday money"
+                       :aria-label="`Reason for the change to ${a.name}`" />
               </form>
 
               <button class="link-btn sv-history-toggle" type="button"
