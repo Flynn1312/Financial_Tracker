@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, reactive, watch, onMounted } from 'vue'
+import { API_URL } from '../config.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,7 +80,7 @@ async function loadOverviewData({ silent = false } = {}) {
   loadError.value = ''
 
   try {
-    const response = await fetch(`http://localhost:3000/api/overview?userId=${userId}`)
+    const response = await fetch(`${API_URL}/api/overview?userId=${userId}`)
     if (!response.ok) throw new Error(`Could not load dashboard data (HTTP ${response.status}).`)
 
     const result = await response.json()
@@ -210,7 +211,7 @@ const newOutgoing = reactive({
 })
 
 async function apiRequest(path, options = {}) {
-  const response = await fetch(`http://localhost:3000/api/overview${path}`, {
+  const response = await fetch(`${API_URL}/api/overview${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   })
@@ -742,7 +743,7 @@ const statusLabel = (s) =>
 // Savings accounts (own API: /api/savings, tables savings_accounts and
 // savings_transactions). Names are prefixed "savings" to avoid clashes above.
 // ---------------------------------------------------------------------------
-const SAVINGS_API = 'http://localhost:3000/api/savings'
+const SAVINGS_API = `${API_URL}/api/savings`
 
 const savingsAccounts = ref([])
 const savingsLoading = ref(true)

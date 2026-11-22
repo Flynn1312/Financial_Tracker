@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { API_URL } from '../config.js'
 
 export function useLogin() {
   const router = useRouter()
@@ -21,7 +22,7 @@ export function useLogin() {
     loading.value = true
 
     try {
-      const response = await fetch('http://localhost:3000/api/login', {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
