@@ -1576,9 +1576,6 @@ const formatDateTime = (value) =>
                 <button type="submit" class="btn" :disabled="savingsBusy">Add</button>
                 <button type="button" class="btn sv-btn-secondary" :disabled="savingsBusy"
                         @click="adjustSavingsBalance(a, -1)">Remove</button>
-                <input v-model="savingsReasons[a.id]" class="sv-reason" maxlength="255"
-                       placeholder="Reason (optional), e.g. Birthday money"
-                       :aria-label="`Reason for the change to ${a.name}`" />
               </form>
 
               <button class="link-btn sv-history-toggle" type="button"
