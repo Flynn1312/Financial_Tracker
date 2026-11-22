@@ -9,6 +9,11 @@ import pool from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import overviewRoutes from './routes/overviewRoutes.js';
 
+
+// 2. After app.use(express.json()) and your existing routes
+
+
+
 // Get current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +24,13 @@ dotenv.config({
 });
 
 const app = express();
-
+app.use(cors({
+  origin: 'http://localhost:5173',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+}))
+app.use(express.json())
+import savingsRoutes from './routes/savings.Routes.js'
+app.use('/api/savings', savingsRoutes(pool))
 // Middleware
 app.use(cors({
     origin: 'http://localhost:5173'

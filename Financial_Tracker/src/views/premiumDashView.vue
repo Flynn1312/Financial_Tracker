@@ -41,7 +41,7 @@ const paydaysUntil = (daysLeft) =>
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
-const tab = ref('overview') // 'overview' | 'spending' | 'invest'
+const tab = ref('overview') // 'overview' | 'spending' | 'invest' | 'savings'
 
 // ---------------------------------------------------------------------------
 // Data loaded from the Express API
@@ -737,6 +737,174 @@ const statusLabel = (s) =>
     : s.status === 'near'
       ? 'Near limit'
       : `${money(s.diff)} left`
+
+// ---------------------------------------------------------------------------
+// Savings accounts (own API: /api/savings, tables savings_accounts and
+// savings_transactions). Names are prefixed "savings" to avoid clashes above.
+// ---------------------------------------------------------------------------
+const SAVINGS_API = 'http://localhost:3000/api/savings'
+
+const savingsAccounts = ref([])
+const savingsLoading = ref(true)
+const savingsLoadError = ref('')
+const savingsActionError = ref('')
+const savingsBusy = ref(false)
+
+const showSavingsForm = ref(false)
+const newSavings = reactive({ name: '', rate: '', saved: '', goal: '' })
+const savingsDrafts = reactive({}) // per-account add/remove amount, keyed by id
+const savingsReasons = reactive({}) // per-account reason for the next change
+const savingsHistoryOpen = reactive({}) // which accounts show their history
+const savingsHistory = reactive({}) // account id -> list of transactions
+const savingsHistoryLoading = reactive({})
+
+async function savingsApi(path = '', options = {}) {
+  const response = await fetch(`${SAVINGS_API}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || `Request failed (HTTP ${response.status}).`)
+  return payload
+}
+
+async function loadSavings({ silent = false } = {}) {
+  if (!silent) savingsLoading.value = true
+  savingsLoadError.value = ''
+  try {
+    const result = await savingsApi(`?userId=${userId}`)
+    savingsAccounts.value = (result.savings ?? []).map((row) => ({
+      id: row.id,
+      name: row.account_name,
+      rate: Number(row.interest_rate || 0),
+      saved: Number(row.saved || 0),
+      goal: Number(row.saving_goal || 0),
+    }))
+  } catch (error) {
+    console.error('Savings loading error:', error)
+    savingsLoadError.value = error.message || 'Could not load your savings accounts.'
+  } finally {
+    savingsLoading.value = false
+  }
+}
+
+onMounted(loadSavings)
+
+// Runs a write, then refreshes the list. Keeps busy/error handling in one place.
+async function runSavings(task) {
+  savingsBusy.value = true
+  savingsActionError.value = ''
+  try {
+    await task()
+    await loadSavings({ silent: true })
+    return true
+  } catch (error) {
+    savingsActionError.value = error.message
+    return false
+  } finally {
+    savingsBusy.value = false
+  }
+}
+
+async function createSavingsAccount() {
+  const rate = Number(newSavings.rate || 0)
+  const saved = Number(newSavings.saved || 0)
+  const goal = Number(newSavings.goal || 0)
+
+  if (!newSavings.name.trim()) {
+    savingsActionError.value = 'Enter an account name, e.g. "Lloyds - General Saver".'
+    return
+  }
+  if (![rate, saved, goal].every((n) => Number.isFinite(n) && n >= 0)) {
+    savingsActionError.value = 'Interest rate, saved and goal must be zero or more.'
+    return
+  }
+
+  const ok = await runSavings(() =>
+    savingsApi('', {
+      method: 'POST',
+      body: JSON.stringify({ userId, name: newSavings.name.trim(), interestRate: rate, saved, goal }),
+    })
+  )
+  if (ok) {
+    Object.assign(newSavings, { name: '', rate: '', saved: '', goal: '' })
+    showSavingsForm.value = false
+  }
+}
+
+async function adjustSavingsBalance(account, direction) {
+  const amount = Number(savingsDrafts[account.id])
+  if (!(amount > 0)) {
+    savingsActionError.value = 'Enter an amount greater than zero.'
+    return
+  }
+  if (direction < 0 && amount > account.saved) {
+    savingsActionError.value = `You can't remove more than the ${money(account.saved)} saved in ${account.name}.`
+    return
+  }
+  const ok = await runSavings(() =>
+    savingsApi(`/${account.id}/balance?userId=${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        delta: direction * amount,
+        reason: String(savingsReasons[account.id] ?? '').trim(),
+      }),
+    })
+  )
+  if (ok) {
+    savingsDrafts[account.id] = ''
+    savingsReasons[account.id] = ''
+    if (savingsHistoryOpen[account.id]) await loadSavingsHistory(account.id)
+  }
+}
+
+async function deleteSavingsAccount(account) {
+  if (!window.confirm(`Delete "${account.name}" and its history? This can't be undone.`)) return
+  await runSavings(() => savingsApi(`/${account.id}?userId=${userId}`, { method: 'DELETE' }))
+}
+
+async function loadSavingsHistory(id) {
+  savingsHistoryLoading[id] = true
+  try {
+    const result = await savingsApi(`/${id}/history?userId=${userId}`)
+    savingsHistory[id] = (result.history ?? []).map((row) => ({
+      id: row.id,
+      amount: Number(row.amount || 0),
+      reason: row.reason || '',
+      date: row.created_at,
+    }))
+  } catch (error) {
+    savingsActionError.value = error.message
+  } finally {
+    savingsHistoryLoading[id] = false
+  }
+}
+
+async function toggleSavingsHistory(account) {
+  savingsHistoryOpen[account.id] = !savingsHistoryOpen[account.id]
+  if (savingsHistoryOpen[account.id]) await loadSavingsHistory(account.id)
+}
+
+// Totals
+const totalSavingsSaved = computed(() => savingsAccounts.value.reduce((t, a) => t + a.saved, 0))
+const totalSavingsGoal = computed(() => savingsAccounts.value.reduce((t, a) => t + a.goal, 0))
+const savingsYearlyInterest = computed(() =>
+  savingsAccounts.value.reduce((t, a) => t + (a.saved * a.rate) / 100, 0)
+)
+
+// Progress ring geometry
+const RING_RADIUS = 52
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+const ringProgress = (a) => (a.goal > 0 ? Math.min(100, (a.saved / a.goal) * 100) : 0)
+const ringOffset = (a) => RING_CIRCUMFERENCE * (1 - ringProgress(a) / 100)
+const savingsComplete = (a) => a.goal > 0 && a.saved >= a.goal
+const savingsRemaining = (a) => Math.max(0, a.goal - a.saved)
+
+const rateLabel = (r) => `${+r.toFixed(2)}%`
+const formatDateTime = (value) =>
+  new Date(value).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 </script>
 
 <template>
@@ -756,6 +924,10 @@ const statusLabel = (s) =>
             :class="{ active: tab === 'overview' }"
             @click="tab = 'overview'">Overview</button>
 
+    <button role="tab" :aria-selected="tab === 'savings'"
+            :class="{ active: tab === 'savings' }"
+            @click="tab = 'savings'">Savings</button>
+
     <button role="tab" :aria-selected="tab === 'spending'"
             :class="{ active: tab === 'spending' }"
             @click="tab = 'spending'">Spending</button>
@@ -763,6 +935,7 @@ const statusLabel = (s) =>
     <button role="tab" :aria-selected="tab === 'invest'"
             :class="{ active: tab === 'invest' }"
             @click="tab = 'invest'">Invest</button>
+
   </nav>
   </div>
 
@@ -771,7 +944,7 @@ const statusLabel = (s) =>
 
     <template v-if="!loading && !loadError">
     <!-- Available budget -->
-    <section class="card hero" :class="{ negative: afterGoals < 0 }">
+    <section v-if="tab !== 'savings'" class="card hero" :class="{ negative: afterGoals < 0 }">
   <p class="label">Available after subscriptions, outgoings &amp; goals</p>
   <p class="hero-amount">{{ money(afterGoals) }}</p>
   <p class="hero-note" v-if="afterGoals >= 0">of {{ money(income) }} monthly income</p>
@@ -1183,7 +1356,7 @@ const statusLabel = (s) =>
     </template>
 
     <!-- ===================== INVEST THE REST ===================== -->
-    <template v-else>
+    <template v-else-if="tab === 'invest'">
       <div class="columns invest">
         <!-- Allocation -->
         <section class="card">
@@ -1294,6 +1467,144 @@ const statusLabel = (s) =>
             Returns aren't guaranteed and investments can fall in value. This isn't financial advice.
           </p>
         </section>
+      </div>
+    </template>
+
+    <!-- ===================== SAVINGS ===================== -->
+    <template v-else-if="tab === 'savings'">
+      <div class="sv-wrap">
+        <header class="card sv-top">
+          <div>
+            <h2>Savings</h2>
+            <p class="sv-subtitle">Your savings accounts and how close you are to each goal</p>
+          </div>
+          <button class="btn" type="button" @click="showSavingsForm = !showSavingsForm"
+                  :aria-expanded="showSavingsForm">
+            {{ showSavingsForm ? 'Cancel' : '+ Add savings account' }}
+          </button>
+        </header>
+
+        <p v-if="savingsActionError" class="action-error" role="alert">{{ savingsActionError }}</p>
+
+        <!-- Add account form -->
+        <form v-if="showSavingsForm" class="card sv-add-form" @submit.prevent="createSavingsAccount">
+          <h3>New savings account</h3>
+          <label class="sv-full">Account name
+            <input v-model="newSavings.name" placeholder="e.g. Lloyds - General Saver" maxlength="100" />
+          </label>
+          <label>Interest rate (% per year)
+            <input v-model="newSavings.rate" type="number" min="0" step="0.01" placeholder="e.g. 4.5" />
+          </label>
+          <label>Amount saved so far (£)
+            <input v-model="newSavings.saved" type="number" min="0" step="0.01" placeholder="0.00" />
+          </label>
+          <label class="sv-full">Saving goal (£)
+            <input v-model="newSavings.goal" type="number" min="0" step="0.01" placeholder="e.g. 5000" />
+          </label>
+          <button class="btn sv-full" type="submit" :disabled="savingsBusy">Add account</button>
+        </form>
+
+        <p v-if="savingsLoading" class="card sv-message">Loading your savings…</p>
+        <section v-else-if="savingsLoadError" class="card sv-message" role="alert">
+          <p>{{ savingsLoadError }}</p>
+          <button class="btn" type="button" @click="loadSavings">Try again</button>
+        </section>
+
+        <template v-else>
+          <!-- Summary -->
+          <section class="sv-summary">
+            <div class="sv-summary-card">
+              <p class="sv-summary-label">Total saved</p>
+              <strong>{{ money(totalSavingsSaved) }}</strong>
+              <p class="sv-summary-detail">across {{ savingsAccounts.length }} {{ savingsAccounts.length === 1 ? 'account' : 'accounts' }}</p>
+            </div>
+            <div class="sv-summary-card">
+              <p class="sv-summary-label">Total goal</p>
+              <strong>{{ money(totalSavingsGoal) }}</strong>
+              <p class="sv-summary-detail">{{ money(Math.max(0, totalSavingsGoal - totalSavingsSaved)) }} to go</p>
+            </div>
+            <div class="sv-summary-card">
+              <p class="sv-summary-label">Est. interest / year</p>
+              <strong>{{ money(savingsYearlyInterest) }}</strong>
+              <p class="sv-summary-detail">at current balances</p>
+            </div>
+          </section>
+
+          <p v-if="!savingsAccounts.length" class="card sv-message empty">
+            No savings accounts yet. Use “Add savings account” to create your first one.
+          </p>
+
+          <!-- Accounts -->
+          <section class="sv-accounts">
+            <article v-for="a in savingsAccounts" :key="a.id" class="card sv-account"
+                     :class="{ complete: savingsComplete(a) }">
+              <div class="sv-account-head">
+                <div class="sv-account-title">
+                  <strong>{{ a.name }}</strong>
+                  <small>Interest rate: {{ rateLabel(a.rate) }}</small>
+                </div>
+                <button class="delete-btn" type="button" :disabled="savingsBusy"
+                        @click="deleteSavingsAccount(a)" :aria-label="`Delete ${a.name}`">Delete</button>
+              </div>
+
+              <div class="sv-ring-row">
+                <div class="sv-ring" role="progressbar" :aria-valuenow="Math.round(ringProgress(a))"
+                     aria-valuemin="0" aria-valuemax="100" :aria-label="`${a.name} progress`">
+                  <svg viewBox="0 0 120 120">
+                    <circle class="sv-ring-track" cx="60" cy="60" :r="RING_RADIUS" />
+                    <circle class="sv-ring-fill" cx="60" cy="60" :r="RING_RADIUS"
+                            :stroke-dasharray="RING_CIRCUMFERENCE" :stroke-dashoffset="ringOffset(a)" />
+                  </svg>
+                  <div class="sv-ring-label">
+                    <strong>{{ Math.round(ringProgress(a)) }}%</strong>
+                    <small>{{ savingsComplete(a) ? 'Goal reached' : 'of goal' }}</small>
+                  </div>
+                </div>
+
+                <dl class="sv-figures">
+                  <div><dt>Saved</dt><dd>{{ money(a.saved) }}</dd></div>
+                  <div><dt>Saving goal</dt><dd>{{ a.goal > 0 ? money(a.goal) : 'Not set' }}</dd></div>
+                  <div v-if="a.goal > 0 && !savingsComplete(a)"><dt>Still to save</dt><dd>{{ money(savingsRemaining(a)) }}</dd></div>
+                  <div><dt>Interest / year</dt><dd>{{ money((a.saved * a.rate) / 100) }}</dd></div>
+                </dl>
+              </div>
+
+              <form class="sv-adjust" @submit.prevent="adjustSavingsBalance(a, 1)">
+                <input v-model="savingsDrafts[a.id]" type="number" min="0" step="0.01"
+                       placeholder="Amount, £" :aria-label="`Amount to add to or remove from ${a.name}`" />
+                <button type="submit" class="btn" :disabled="savingsBusy">Add</button>
+                <button type="button" class="btn sv-btn-secondary" :disabled="savingsBusy"
+                        @click="adjustSavingsBalance(a, -1)">Remove</button>
+                <input v-model="savingsReasons[a.id]" class="sv-reason" maxlength="255"
+                       placeholder="Reason (optional), e.g. Birthday money"
+                       :aria-label="`Reason for the change to ${a.name}`" />
+              </form>
+
+              <button class="link-btn sv-history-toggle" type="button"
+                      :aria-expanded="!!savingsHistoryOpen[a.id]" @click="toggleSavingsHistory(a)">
+                {{ savingsHistoryOpen[a.id] ? 'Hide history' : 'Show history' }}
+              </button>
+
+              <div v-if="savingsHistoryOpen[a.id]" class="sv-history">
+                <p v-if="savingsHistoryLoading[a.id] && !savingsHistory[a.id]" class="sv-history-empty">Loading history…</p>
+                <p v-else-if="!(savingsHistory[a.id] || []).length" class="sv-history-empty">
+                  No deposits or withdrawals recorded yet.
+                </p>
+                <ul v-else class="sv-history-list">
+                  <li v-for="t in savingsHistory[a.id]" :key="t.id">
+                    <span class="sv-history-main">
+                      <strong>{{ t.reason || (t.amount > 0 ? 'Deposit' : 'Withdrawal') }}</strong>
+                      <small>{{ formatDateTime(t.date) }}</small>
+                    </span>
+                    <span class="sv-history-amount" :class="t.amount > 0 ? 'in' : 'out'">
+                      {{ t.amount > 0 ? '+' : '−' }}{{ money(Math.abs(t.amount)) }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </article>
+          </section>
+        </template>
       </div>
     </template>
     </template>
@@ -3288,5 +3599,182 @@ h2.spaced {
 /* Edit mode shouldn't stretch the other cards */
 .dashboard .stats > .summary-grid {
   align-items: start;
+}
+
+/* -------------------------------------------------------------------------
+   Savings tab (all classes prefixed sv-)
+   ------------------------------------------------------------------------- */
+.sv-wrap {
+  max-width: 1050px;
+  margin: 0 auto;
+}
+.sv-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.sv-top h2 { margin: 0; font-size: 1.25rem; }
+.sv-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+.sv-message { margin-bottom: 12px; }
+.sv-message.empty { text-align: center; }
+.sv-wrap .action-error { margin-bottom: 12px; }
+
+.sv-btn-secondary {
+  background: #eaf0f7;
+  color: var(--blue);
+  border: 1px solid #d3dfec;
+}
+
+/* Add form */
+.sv-add-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sv-add-form h3 { grid-column: 1 / -1; margin: 0; font-size: 1.05rem; }
+.sv-add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.sv-full { grid-column: 1 / -1; }
+.sv-add-form input,
+.sv-adjust input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #d3dfec;
+  border-radius: 9px;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+  color: var(--text);
+}
+
+/* Summary */
+.sv-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.sv-summary-card {
+  padding: 16px;
+  text-align: center;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+.sv-summary-label { margin: 0 0 4px; color: var(--muted); font-size: 0.85rem; }
+.sv-summary-card strong { display: block; color: #10233f; font-size: 1.4rem; overflow-wrap: anywhere; }
+.sv-summary-detail { margin: 4px 0 0; color: var(--muted); font-size: 0.78rem; }
+
+/* Accounts */
+.sv-accounts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.sv-account-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sv-account-title { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sv-account-title strong { font-size: 1.02rem; overflow-wrap: anywhere; }
+.sv-account-title small { color: var(--muted); }
+
+.sv-ring-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 16px 0;
+}
+.sv-ring { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
+.sv-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.sv-ring-track, .sv-ring-fill { fill: none; stroke-width: 11; }
+.sv-ring-track { stroke: var(--border); }
+.sv-ring-fill {
+  stroke: var(--blue);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+.sv-account.complete .sv-ring-fill { stroke: #16a34a; }
+.sv-ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.sv-ring-label strong { font-size: 1.5rem; color: #10233f; }
+.sv-ring-label small { color: var(--muted); font-size: 0.72rem; }
+
+.sv-figures { flex: 1; min-width: 0; margin: 0; display: grid; gap: 8px; }
+.sv-figures div { display: flex; justify-content: space-between; gap: 8px; }
+.sv-figures dt { color: var(--muted); font-size: 0.85rem; }
+.sv-figures dd { margin: 0; font-weight: 600; font-size: 0.9rem; }
+
+.sv-adjust {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.sv-adjust .sv-reason { grid-column: 1 / -1; }
+.sv-history-toggle { margin-top: 12px; padding: 5px 0; }
+
+/* History */
+.sv-history {
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.sv-history-empty { margin: 8px 0; color: var(--muted); font-size: 0.85rem; }
+.sv-history-list {
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+}
+.sv-history-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.sv-history-list li:last-child { border-bottom: none; }
+.sv-history-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sv-history-main strong { font-size: 0.9rem; overflow-wrap: anywhere; }
+.sv-history-main small { color: var(--muted); font-size: 0.75rem; }
+.sv-history-amount { flex-shrink: 0; font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
+.sv-history-amount.in { color: #16a34a; }
+.sv-history-amount.out { color: var(--red); }
+
+@media (max-width: 800px) {
+  .sv-accounts { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .sv-top { flex-direction: column; align-items: stretch; }
+  .sv-summary { grid-template-columns: 1fr; }
+  .sv-add-form { grid-template-columns: 1fr; }
+  .sv-ring-row { flex-direction: column; align-items: stretch; }
+  .sv-ring { align-self: center; }
 }
 </style>
